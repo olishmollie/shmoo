@@ -1,0 +1,32 @@
+[package]
+name = "shmoo"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+debug = true
+
+[dependencies]
+criterion = "0.5.1"
+nix = { version = "0.29.0", features = ["mman", "fs"] }
+
+[[example]]
+name = "bounce"
+path = "examples/shm_open/bounce.rs"
+
+[[example]]
+name = "send"
+path = "examples/shm_open/send.rs"
+
+[[example]]
+name = "ping_pong"
+path = "examples/ping_pong/pong.rs"
+
+# Don't run directoy -- invoked in ping_pong.
+[[example]]
+name = "ping"
+path = "examples/ping_pong/ping.rs"
+
+[[bench]]
+name = "ping_pong"
+harness = false
