@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 RUN apt-get update
 
@@ -7,7 +7,7 @@ RUN apt-get install -y \
     git curl wget npm \
     unzip
 
-RUN apt-get upgrade
+RUN apt-get upgrade -y
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 

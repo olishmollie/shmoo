@@ -29,10 +29,10 @@ fn main() -> Result<()> {
     shmbuf.write(string.as_bytes());
 
     // Tell peer that it can now access shared memory.
-    shmbuf.sem1.post()?;
+    shmbuf.sem1.post();
 
     // Wait until peer has modified shared memory.
-    shmbuf.sem2.wait()?;
+    shmbuf.sem2.wait();
 
     let result = String::from_utf8(shmbuf.buf.to_vec()).unwrap();
     println!("{}", result);

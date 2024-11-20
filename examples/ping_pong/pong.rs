@@ -21,26 +21,28 @@ fn main() -> Result<()> {
         .create(true)
         .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
-    let mut ping = Command::new("target/release/examples/ping").spawn()?;
-
     let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
     let mut buf = vec![0u8; 4];
 
+    let mut ping = Command::new("target/debug/examples/ping").spawn()?;
+
     for _ in 0..n {
         // Wait for ping to post.
-        shmbuf.sem1.wait().unwrap();
+        shmbuf.sem1.wait();
 
         // Check for ping.
         shmbuf.read(&mut buf);
-        assert_eq!(buf, PING);
+        debug_assert_eq!(buf, PING);
 
         // Send a pong.
         shmbuf.write(PONG);
-        shmbuf.sem2.post().unwrap();
+        shmbuf.sem2.post();
     }
 
+    shmbuf.sem1.wait();
     shmbuf.write(DONE);
-    shmbuf.sem2.post()?;
+    shmbuf.sem2.post();
+
     ping.wait()?;
 
     Ok(())

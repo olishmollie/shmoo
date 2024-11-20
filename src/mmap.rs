@@ -64,6 +64,12 @@ pub struct OpenOptions {
 
 impl OpenOptions {
     pub fn with_capacity(self, handle: &str, len: usize) -> Result<Mmap> {
+        if handle.chars().nth(0) != Some('/') {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "Mmap handle must start with '/'",
+            ));
+        }
         let fd = shm_open(handle, self.oflg, self.mode)?;
         ftruncate(fd.try_clone()?, len as i64)?;
         let inner = MmapRaw::new(

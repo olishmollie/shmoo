@@ -21,12 +21,12 @@ fn bench(c: &mut Criterion) {
         .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())
         .unwrap();
 
+    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
+    let mut buf = vec![0u8; 4];
+
     let mut ping = Command::new("target/release/examples/ping")
         .spawn()
         .unwrap();
-
-    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
-    let mut buf = vec![0u8; 4];
 
     let mut group = c.benchmark_group("ping_pong_throughput");
     group.throughput(Throughput::Elements(n));
@@ -34,7 +34,7 @@ fn bench(c: &mut Criterion) {
         b.iter(|| {
             for _ in 0..n {
                 // Wait for ping to post.
-                shmbuf.sem1.wait().unwrap();
+                shmbuf.sem1.wait();
 
                 // Check for ping.
                 shmbuf.read(&mut buf);
@@ -42,13 +42,14 @@ fn bench(c: &mut Criterion) {
 
                 // Send a pong.
                 shmbuf.write(PONG);
-                shmbuf.sem2.post().unwrap();
+                shmbuf.sem2.post();
             }
         })
     });
 
+    shmbuf.sem1.wait();
     shmbuf.write(DONE);
-    shmbuf.sem2.post().unwrap();
+    shmbuf.sem2.post();
     ping.wait().unwrap();
 }
 

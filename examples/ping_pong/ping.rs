@@ -21,16 +21,16 @@ fn main() {
     loop {
         // Send a ping.
         shmbuf.write(PING);
-        shmbuf.sem1.post().unwrap();
+        shmbuf.sem1.post();
 
         // Wait for pong to post.
-        shmbuf.sem2.wait().unwrap();
+        shmbuf.sem2.wait();
 
         // Check for pong.
         shmbuf.read(&mut buf);
         if buf == DONE {
             break;
         }
-        assert_eq!(buf, PONG);
+        debug_assert_eq!(buf, PONG);
     }
 }

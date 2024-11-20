@@ -21,12 +21,12 @@ fn main() -> Result<()> {
     let shmbuf = Shmbuf::<BUF_SIZE>::new(&mut mem)?;
 
     // Wait for sem1 to post before touching shared memory.
-    shmbuf.sem1.wait()?;
+    shmbuf.sem1.wait();
 
     shmbuf.buf.make_ascii_uppercase();
 
     // Post sem2 to tell the peer that it can access data in shared memory.
-    shmbuf.sem2.post()?;
+    shmbuf.sem2.post();
 
     Ok(())
 }

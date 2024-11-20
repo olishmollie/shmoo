@@ -5,4 +5,4 @@ mod sync;
 
 pub use mapped_file::MappedFile;
 pub use mmap::Mmap;
-pub use sync::Semaphore;
+pub use sync::BinarySemaphore;

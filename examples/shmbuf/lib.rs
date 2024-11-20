@@ -1,14 +1,14 @@
 use std::io::Result;
 
-use shmoo::{Mmap, Semaphore};
+use shmoo::{BinarySemaphore, Mmap};
 
 pub const BUF_SIZE: usize = 1024;
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct Shmbuf<const N: usize> {
-    pub sem1: Semaphore,
-    pub sem2: Semaphore,
+    pub sem1: BinarySemaphore,
+    pub sem2: BinarySemaphore,
     pub buf: [u8; N],
 }
 
@@ -20,8 +20,8 @@ impl<const N: usize> Shmbuf<N> {
         );
         let shmbuf = mem.as_mut_ptr() as *mut Shmbuf<N>;
         unsafe {
-            (&raw mut (*shmbuf).sem1).write(Semaphore::new(0)?);
-            (&raw mut (*shmbuf).sem2).write(Semaphore::new(0)?);
+            (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
+            (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
             (&raw mut (*shmbuf).buf).write([0; N]);
             Ok(&mut *shmbuf)
         }
