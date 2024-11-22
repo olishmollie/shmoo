@@ -21,7 +21,7 @@ path = "examples/shm_open/send.rs"
 name = "ping_pong"
 path = "examples/ping_pong/pong.rs"
 
-# Don't run directoy -- invoked in ping_pong.
+# Don't run directly, it's invoked by ping_pong.
 [[example]]
 name = "ping"
 path = "examples/ping_pong/ping.rs"

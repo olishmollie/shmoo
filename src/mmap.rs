@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind, Result};
 use std::num::NonZero;
 use std::ops::{Deref, DerefMut};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
 use nix::sys::mman::shm_unlink;
@@ -9,7 +10,7 @@ use nix::{
     fcntl::OFlag,
     libc::off_t,
     sys::mman::{shm_open, MapFlags, ProtFlags},
-    sys::stat::Mode,
+    sys::stat::{fstat, Mode},
 };
 
 use crate::mmap_raw::MmapRaw;
@@ -23,6 +24,27 @@ pub struct OpenOptions {
 }
 
 impl OpenOptions {
+    pub fn open(self, handle: &str) -> Result<Mmap> {
+        let fd = shm_open(handle, self.oflg, self.mode)?;
+        let statbuf = fstat(fd.as_raw_fd())?;
+        let size = statbuf.st_size as usize;
+        let inner = MmapRaw::new(
+            None,
+            NonZero::new(size).ok_or(Error::new(
+                ErrorKind::InvalidData,
+                "file size cannot be zero",
+            ))?,
+            self.prot,
+            self.flgs,
+            &fd,
+            self.offset,
+        )?;
+        Ok(Mmap {
+            inner: Some(inner),
+            handle: handle.into(),
+        })
+    }
+
     pub fn with_capacity(self, handle: &str, len: usize) -> Result<Mmap> {
         if handle.chars().nth(0) != Some('/') {
             return Err(Error::new(

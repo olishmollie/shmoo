@@ -19,10 +19,7 @@ fn main() -> Result<()> {
         ));
     }
 
-    let mut mem = Mmap::options()
-        .read(true)
-        .write(true)
-        .with_capacity(shmpath, 4096)?;
+    let mut mem = Mmap::options().read(true).write(true).open(shmpath)?;
 
     let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut mem)?;
 

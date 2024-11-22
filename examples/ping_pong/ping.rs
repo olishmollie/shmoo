@@ -10,14 +10,19 @@ const PONG: Msg = *b"pong";
 const DONE: Msg = *b"done";
 
 fn main() {
-    let mut mq = MsgQueue::<Msg>::open("shmoo").unwrap();
+    let mut mq = MsgQueue::<Msg>::open("/shmoo").unwrap();
 
     loop {
-        let ping = mq.recv().unwrap();
-        if ping == DONE {
+        println!("PING: Waiting for pong...");
+        let pong = mq.recv().unwrap();
+        if pong == DONE {
             break;
         }
-        mq.send(PONG).unwrap();
-        assert_eq!(ping, PING);
+        assert_eq!(
+            pong,
+            PONG,
+            "PING: expected pong, got {}",
+            String::from_utf8(pong.to_vec()).unwrap()
+        );
     }
 }

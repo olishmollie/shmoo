@@ -1,11 +1,10 @@
 use std::io::Result;
 
-use shmoo::{BinarySemaphore, Mmap};
+use shmoo::{sync::BinarySemaphore, Mmap};
 
 pub const BUF_SIZE: usize = 1024;
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct Shmbuf<const N: usize> {
     pub sem1: BinarySemaphore,
     pub sem2: BinarySemaphore,

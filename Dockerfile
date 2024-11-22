@@ -11,8 +11,6 @@ RUN apt-get upgrade -y
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-RUN mkdir -p .config && git clone https://github.com/olishmollie/nvim /root/.config/nvim
-
 RUN wget https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz \
     && tar -xvf nvim-linux64.tar.gz
 
