@@ -34,7 +34,7 @@ fn bench(c: &mut Criterion) {
         b.iter(|| {
             for _ in 0..n {
                 // Wait for ping to post.
-                shmbuf.sem1.wait();
+                shmbuf.sem1.wait().unwrap();
 
                 // Check for ping.
                 shmbuf.read(&mut buf);
@@ -42,14 +42,14 @@ fn bench(c: &mut Criterion) {
 
                 // Send a pong.
                 shmbuf.write(PONG);
-                shmbuf.sem2.post();
+                shmbuf.sem2.post().unwrap();
             }
         })
     });
 
-    shmbuf.sem1.wait();
+    shmbuf.sem1.wait().unwrap();
     shmbuf.write(DONE);
-    shmbuf.sem2.post();
+    shmbuf.sem2.post().unwrap();
     ping.wait().unwrap();
 }
 

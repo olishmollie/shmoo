@@ -1,36 +1,23 @@
 #[path = "../shmbuf/lib.rs"]
 pub mod shmbuf;
 
-use shmbuf::Shmbuf;
-use shmoo::Mmap;
+use shmoo::MsgQueue;
 
-const PING: &[u8] = b"ping";
-const PONG: &[u8] = b"pong";
-const DONE: &[u8] = b"done";
+type Msg = [u8; 4];
+
+const PING: Msg = *b"ping";
+const PONG: Msg = *b"pong";
+const DONE: Msg = *b"done";
 
 fn main() {
-    let mut mem = Mmap::options()
-        .read(true)
-        .write(true)
-        .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())
-        .unwrap();
-
-    let shmbuf = Shmbuf::<4>::from_shm_mut(&mut mem).unwrap();
-    let mut buf = vec![0u8; 4];
+    let mut mq = MsgQueue::<Msg>::open("shmoo").unwrap();
 
     loop {
-        // Send a ping.
-        shmbuf.write(PING);
-        shmbuf.sem1.post();
-
-        // Wait for pong to post.
-        shmbuf.sem2.wait();
-
-        // Check for pong.
-        shmbuf.read(&mut buf);
-        if buf == DONE {
+        let ping = mq.recv().unwrap();
+        if ping == DONE {
             break;
         }
-        debug_assert_eq!(buf, PONG);
+        mq.send(PONG).unwrap();
+        assert_eq!(ping, PING);
     }
 }

@@ -14,46 +14,6 @@ use nix::{
 
 use crate::mmap_raw::MmapRaw;
 
-#[derive(Debug)]
-pub struct Mmap {
-    handle: PathBuf,
-    inner: Option<MmapRaw>,
-}
-
-impl Mmap {
-    pub fn options() -> OpenOptions {
-        OpenOptions::new()
-    }
-}
-
-impl Deref for Mmap {
-    type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        if let Some(inner) = &self.inner {
-            inner.deref()
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-impl DerefMut for Mmap {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        if let Some(inner) = &mut self.inner {
-            inner.deref_mut()
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-impl Drop for Mmap {
-    fn drop(&mut self) {
-        drop(self.inner.take());
-        let _ = shm_unlink(&self.handle);
-    }
-}
-
 pub struct OpenOptions {
     mode: Mode,
     oflg: OFlag,
@@ -144,5 +104,45 @@ impl OpenOptions {
     pub fn offset(mut self, offset: off_t) -> Self {
         self.offset = offset;
         self
+    }
+}
+
+#[derive(Debug)]
+pub struct Mmap {
+    handle: PathBuf,
+    inner: Option<MmapRaw>,
+}
+
+impl Mmap {
+    pub fn options() -> OpenOptions {
+        OpenOptions::new()
+    }
+}
+
+impl Deref for Mmap {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        if let Some(inner) = &self.inner {
+            inner.deref()
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl DerefMut for Mmap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        if let Some(inner) = &mut self.inner {
+            inner.deref_mut()
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl Drop for Mmap {
+    fn drop(&mut self) {
+        drop(self.inner.take());
+        let _ = shm_unlink(&self.handle);
     }
 }
