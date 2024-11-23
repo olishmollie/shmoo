@@ -14,12 +14,12 @@ fn main() {
     let mut rx = MsgQueue::<Msg>::open("/pong").unwrap();
 
     loop {
+        //println!("ping");
         tx.send(PING).unwrap();
         let pong = rx.recv().unwrap();
         if pong == DONE {
             break;
         }
         assert_eq!(pong, PONG);
-        println!("pong");
     }
 }

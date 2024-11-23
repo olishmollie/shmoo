@@ -104,20 +104,20 @@ impl BinarySemaphore {
     }
 
     pub fn post(&mut self) -> Result<()> {
-        self.inner.store(1, Ordering::Release);
+        self.inner.store(0, Ordering::Release);
         Ok(())
     }
 
     pub fn wait(&mut self) -> Result<()> {
         if let Ok(_) = self
             .inner
-            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Acquire)
+            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Acquire)
         {
             return Ok(());
         }
         while let Err(_) = self
             .inner
-            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
         {
             std::hint::spin_loop();
         }

@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     for _ in 0..n {
         let ping = rx.recv()?;
         assert_eq!(ping, PING);
-        println!("ping");
+        //println!("pong");
         tx.send(PONG)?;
     }
 
