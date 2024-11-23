@@ -45,12 +45,15 @@ impl<T: Sized + Copy + Debug> MsgQueue<T> {
 
     pub fn send(&mut self, val: T) -> Result<()> {
         self.mem.mtx().lock()?;
+        println!("Checking if queue is full...");
         while self.is_full() {
             self.mem.wr_cond().wait(self.mem.mtx())?;
         }
+        println!("Adding item!");
         let wrp = self.mem.wrp() % self.mem.cap();
         self.mem.data_mut()[wrp] = val;
         self.mem.inc_wrp();
+        self.mem.inc_len();
         self.mem.rd_cond().signal()?;
         self.mem.mtx().unlock()?;
         Ok(())
@@ -65,21 +68,22 @@ impl<T: Sized + Copy + Debug> MsgQueue<T> {
         let data = self.mem.data();
         let val = data[rdp];
         self.mem.inc_rdp();
+        self.mem.dec_len();
         self.mem.wr_cond().signal()?;
         self.mem.mtx().unlock()?;
         Ok(val)
     }
 
+    pub fn len(&self) -> usize {
+        self.mem.len()
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.mem.rdp() == self.mem.wrp()
+        self.len() == 0
     }
 
     pub fn is_full(&self) -> bool {
-        if self.is_empty() {
-            false
-        } else {
-            self.mem.rdp() % self.mem.cap() == self.mem.wrp() - 1
-        }
+        self.len() == self.cap
     }
 }
 
@@ -112,13 +116,32 @@ impl<T: Sized> MemWrapper<T> {
         unsafe { (*self.hdr).cap }
     }
 
+    fn len(&self) -> usize {
+        unsafe { (*self.hdr).len }
+    }
+
+    fn inc_len(&self) {
+        unsafe {
+            let len = &raw mut (*self.hdr).len;
+            *len += 1;
+        }
+    }
+
+    fn dec_len(&self) {
+        unsafe {
+            let len = &raw mut (*self.hdr).len;
+            *len -= 1;
+        }
+    }
+
     fn rdp(&self) -> usize {
         unsafe { (*self.hdr).rdp }
     }
 
     fn inc_rdp(&mut self) {
         unsafe {
-            *(&raw mut (*self.hdr).rdp) += 1;
+            let rdp = &raw mut (*self.hdr).rdp;
+            *rdp = (*rdp + 1) % self.cap();
         }
     }
 
@@ -128,7 +151,8 @@ impl<T: Sized> MemWrapper<T> {
 
     fn inc_wrp(&mut self) {
         unsafe {
-            *(&raw mut (*self.hdr).wrp) += 1;
+            let wrp = &raw mut (*self.hdr).wrp;
+            *wrp = (*wrp + 1) % self.cap();
         }
     }
 
@@ -162,6 +186,7 @@ impl<T: Sized> MemWrapper<T> {
 #[repr(C)]
 struct Header {
     cap: usize,
+    len: usize,
     rdp: usize,
     wrp: usize,
     mtx: PosixMutex,
@@ -173,9 +198,10 @@ impl Header {
     unsafe fn new(mem: *mut u8, cap: usize) -> Result<*mut Self> {
         let ptr = mem as *mut usize;
         ptr.write(cap);
-        ptr.add(1).write(0); // rdp
-        ptr.add(2).write(0); // wrp
-        let mtx_ptr = ptr.add(3) as *mut PosixMutex;
+        ptr.add(1).write(0); // len
+        ptr.add(2).write(0); // rdp
+        ptr.add(3).write(0); // wrp
+        let mtx_ptr = ptr.add(4) as *mut PosixMutex;
         debug_assert!(
             mtx_ptr.is_aligned(),
             "*mut PosixMutex is unaligned: {:?}",
