@@ -1,5 +1,5 @@
 use core::slice;
-use std::{fmt::Debug, io::Result, marker::PhantomData};
+use std::{io::Result, marker::PhantomData};
 
 use crate::{
     sync::{PosixCondition, PosixMutex},
@@ -12,7 +12,7 @@ pub struct MsgQueue<T: Sized + Copy> {
     cap: usize,
 }
 
-impl<T: Sized + Copy + Debug> MsgQueue<T> {
+impl<T: Sized + Copy> MsgQueue<T> {
     pub fn new(name: &str, cap: usize) -> Result<Self> {
         if size_of::<T>() == 0 {
             unimplemented!("ZSTs not yet supported");
@@ -23,6 +23,7 @@ impl<T: Sized + Copy + Debug> MsgQueue<T> {
             .read(true)
             .write(true)
             .create(true)
+            .exclusive(true)
             .with_capacity(&name, size)?;
         let mem = MemWrapper::new(mmap, cap)?;
         Ok(MsgQueue { mem, cap })
@@ -45,11 +46,9 @@ impl<T: Sized + Copy + Debug> MsgQueue<T> {
 
     pub fn send(&mut self, val: T) -> Result<()> {
         self.mem.mtx().lock()?;
-        println!("Checking if queue is full...");
         while self.is_full() {
             self.mem.wr_cond().wait(self.mem.mtx())?;
         }
-        println!("Adding item!");
         let wrp = self.mem.wrp() % self.mem.cap();
         self.mem.data_mut()[wrp] = val;
         self.mem.inc_wrp();

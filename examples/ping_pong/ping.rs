@@ -6,19 +6,20 @@ use shmoo::MsgQueue;
 type Msg = [u8; 4];
 
 const PING: Msg = *b"ping";
-// const PONG: Msg = *b"pong";
+const PONG: Msg = *b"pong";
 const DONE: Msg = *b"done";
 
 fn main() {
-    let mut mq = MsgQueue::<Msg>::open("/ping").unwrap();
+    let mut tx = MsgQueue::<Msg>::open("/ping").unwrap();
+    let mut rx = MsgQueue::<Msg>::open("/pong").unwrap();
 
     loop {
-        mq.send(PING).unwrap();
-        let pong = mq.recv().unwrap();
-        println!("ping msg: {}", String::from_utf8(pong.to_vec()).unwrap());
+        tx.send(PING).unwrap();
+        let pong = rx.recv().unwrap();
         if pong == DONE {
             break;
         }
-        // assert_eq!(pong, PONG);
+        assert_eq!(pong, PONG);
+        println!("pong");
     }
 }

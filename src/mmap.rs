@@ -95,6 +95,15 @@ impl OpenOptions {
         self
     }
 
+    pub fn exclusive(mut self, exclusive: bool) -> Self {
+        if exclusive {
+            self.oflg |= OFlag::O_EXCL;
+        } else {
+            self.oflg &= !OFlag::O_EXCL;
+        }
+        self
+    }
+
     pub fn read(mut self, readable: bool) -> Self {
         if readable {
             self.prot |= ProtFlags::PROT_READ;
