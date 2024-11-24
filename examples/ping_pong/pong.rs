@@ -3,32 +3,46 @@ pub mod shmbuf;
 
 use std::{io::Result, process::Command};
 
-use shmoo::MsgQueue;
+use shmbuf::Shmbuf;
+use shmoo::Shm;
 
-type Msg = [u8; 4];
-
-const PING: Msg = *b"ping";
-const PONG: Msg = *b"pong";
-const DONE: Msg = *b"done";
+const PING: &[u8] = b"ping";
+const PONG: &[u8] = b"pong";
+const DONE: &[u8] = b"done";
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let n = args[1].parse::<u32>().unwrap();
 
-    let mut tx = MsgQueue::<Msg>::new("/pong", 1)?;
-    let mut rx = MsgQueue::<Msg>::new("/ping", 1)?;
+    let mut mem = Shm::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
-    let mut peer = Command::new("target/debug/examples/ping").spawn()?;
+    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
+    let mut buf = vec![0u8; 4];
+
+    let mut ping = Command::new("target/debug/examples/ping").spawn()?;
 
     for _ in 0..n {
-        let ping = rx.recv()?;
-        assert_eq!(ping, PING);
-        //println!("pong");
-        tx.send(PONG)?;
+        // Wait for ping to post.
+        shmbuf.sem1.wait()?;
+
+        // Check for ping.
+        shmbuf.read(&mut buf);
+        debug_assert_eq!(buf, PING);
+
+        // Send a pong.
+        shmbuf.write(PONG);
+        shmbuf.sem2.post()?;
     }
 
-    tx.send(DONE)?;
-    peer.wait()?;
+    shmbuf.sem1.wait()?;
+    shmbuf.write(DONE);
+    shmbuf.sem2.post()?;
+
+    ping.wait()?;
 
     Ok(())
 }

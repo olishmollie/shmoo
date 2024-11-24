@@ -5,7 +5,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::process::Command;
 
 use shmbuf::Shmbuf;
-use shmoo::Mmap;
+use shmoo::Shm;
 
 const PING: &[u8] = b"ping";
 const PONG: &[u8] = b"pong";
@@ -13,7 +13,7 @@ const DONE: &[u8] = b"done";
 
 fn bench(c: &mut Criterion) {
     let n = 1000;
-    let mut mem = Mmap::options()
+    let mut mem = Shm::options()
         .read(true)
         .write(true)
         .create(true)

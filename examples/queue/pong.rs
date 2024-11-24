@@ -1,0 +1,33 @@
+use std::{io::Result, process::Command};
+
+use shmoo::MsgQueue;
+
+type Msg = [u8; 4];
+
+const PING: Msg = *b"ping";
+const PONG: Msg = *b"pong";
+const DONE: Msg = *b"done";
+
+fn main() -> Result<()> {
+    let n = std::env::args().collect::<Vec<String>>()[1]
+        .parse::<u32>()
+        .unwrap();
+
+    let mut tx = MsgQueue::<Msg>::new("/pong", 1)?;
+    let mut rx = MsgQueue::<Msg>::new("/ping", 1)?;
+
+    let mut peer = Command::new("target/debug/examples/queue_ping")
+        .spawn()
+        .unwrap();
+
+    for _ in 0..n {
+        let msg = rx.recv()?;
+        assert_eq!(msg, PING);
+        tx.send(PONG)?;
+    }
+
+    tx.send(DONE)?;
+    peer.wait()?;
+
+    Ok(())
+}

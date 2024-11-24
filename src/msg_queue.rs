@@ -1,6 +1,6 @@
 use std::{io::Result, marker::PhantomData, slice};
 
-use crate::{sync::BinarySemaphore, Mmap};
+use crate::{sync::Spinlock, Shm};
 
 #[repr(C)]
 pub struct MsgQueue<T: Sized + Copy> {
@@ -13,7 +13,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
             unimplemented!("ZSTs not yet supported");
         }
         let size = size_of::<Header>() + cap * size_of::<T>();
-        let mmap = Mmap::options()
+        let mmap = Shm::options()
             .mode(0o644)
             .read(true)
             .write(true)
@@ -25,7 +25,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
     }
 
     pub fn open(name: &str) -> Result<Self> {
-        let mmap = Mmap::options()
+        let mmap = Shm::options()
             .mode(0o644)
             .read(true)
             .write(true)
@@ -43,7 +43,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
     }
 
     pub fn send(&mut self, val: T) -> Result<()> {
-        self.mem.wr_sem().wait()?;
+        self.mem.wr_lock().lock()?;
         while self.is_full() {
             std::hint::spin_loop();
         }
@@ -51,12 +51,12 @@ impl<T: Sized + Copy> MsgQueue<T> {
         self.mem.data_mut()[wrp] = val;
         self.mem.inc_wrp();
         self.mem.inc_len();
-        self.mem.wr_sem().post()?;
+        self.mem.wr_lock().unlock()?;
         Ok(())
     }
 
     pub fn recv(&mut self) -> Result<T> {
-        self.mem.rd_sem().wait()?;
+        self.mem.rd_lock().lock()?;
         while self.is_empty() {
             std::hint::spin_loop();
         }
@@ -65,7 +65,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
         let val = data[rdp];
         self.mem.inc_rdp();
         self.mem.dec_len();
-        self.mem.rd_sem().post()?;
+        self.mem.rd_lock().unlock()?;
         Ok(val)
     }
 
@@ -79,13 +79,13 @@ impl<T: Sized + Copy> MsgQueue<T> {
 }
 
 struct MemWrapper<T: Sized> {
-    mmap: Mmap,
+    mmap: Shm,
     hdr: *mut Header,
     _marker: PhantomData<T>,
 }
 
 impl<T: Sized> MemWrapper<T> {
-    fn new(mut mmap: Mmap, cap: usize) -> Result<Self> {
+    fn new(mut mmap: Shm, cap: usize) -> Result<Self> {
         let hdr = unsafe { Header::new(mmap.as_mut_ptr() as *mut u8, cap)? };
         Ok(MemWrapper {
             mmap,
@@ -94,7 +94,7 @@ impl<T: Sized> MemWrapper<T> {
         })
     }
 
-    fn from_shm(mut mmap: Mmap) -> Self {
+    fn from_shm(mut mmap: Shm) -> Self {
         let hdr = Header::from_shm(mmap.as_mut_ptr() as *mut u8);
         MemWrapper {
             mmap,
@@ -143,12 +143,12 @@ impl<T: Sized> MemWrapper<T> {
         }
     }
 
-    fn rd_sem(&self) -> &mut BinarySemaphore {
-        unsafe { &mut *(&raw mut (*self.hdr).rd_sem) }
+    fn rd_lock(&self) -> &mut Spinlock {
+        unsafe { &mut *(&raw mut (*self.hdr).rd_lock) }
     }
 
-    fn wr_sem(&self) -> &mut BinarySemaphore {
-        unsafe { &mut *(&raw mut (*self.hdr).wr_sem) }
+    fn wr_lock(&self) -> &mut Spinlock {
+        unsafe { &mut *(&raw mut (*self.hdr).wr_lock) }
     }
 
     fn data(&self) -> &[T] {
@@ -172,8 +172,8 @@ struct Header {
     len: usize,
     rdp: usize,
     wrp: usize,
-    rd_sem: BinarySemaphore,
-    wr_sem: BinarySemaphore,
+    rd_lock: Spinlock,
+    wr_lock: Spinlock,
 }
 
 impl Header {
@@ -183,14 +183,14 @@ impl Header {
         ptr.add(1).write(0); //len
         ptr.add(2).write(0); //rdp
         ptr.add(3).write(0); //wrp
-        let mtx_ptr = ptr.add(3) as *mut BinarySemaphore;
+        let mtx_ptr = ptr.add(3) as *mut Spinlock;
         debug_assert!(
             mtx_ptr.is_aligned(),
             "*mut BinarySemaphore is unaligned: {:?}",
             mtx_ptr
         );
-        mtx_ptr.write(BinarySemaphore::new());
-        mtx_ptr.add(1).write(BinarySemaphore::new());
+        mtx_ptr.write(Spinlock::new());
+        mtx_ptr.add(1).write(Spinlock::new());
         Ok(mem as *mut Header)
     }
 

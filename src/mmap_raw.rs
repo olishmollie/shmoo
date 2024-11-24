@@ -9,8 +9,8 @@ use nix::sys::mman::{mmap, msync, munmap, MapFlags, MsFlags, ProtFlags};
 
 #[derive(Debug)]
 pub(crate) struct MmapRaw {
-    pub ptr: NonNull<c_void>,
-    pub len: usize,
+    ptr: NonNull<c_void>,
+    len: usize,
 }
 
 impl<'l> MmapRaw {
@@ -31,6 +31,10 @@ impl<'l> MmapRaw {
 
     pub fn flush(&mut self) -> Result<()> {
         unsafe { msync(self.ptr, self.len, MsFlags::MS_SYNC).map_err(|_| Error::last_os_error()) }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
     }
 }
 

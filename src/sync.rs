@@ -1,7 +1,10 @@
 use std::{
-    io::{Error, Result},
+    io::{Error, ErrorKind, Result},
     mem::MaybeUninit,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        LazyLock,
+    },
 };
 
 use nix::libc::{
@@ -10,6 +13,8 @@ use nix::libc::{
     pthread_mutex_lock, pthread_mutex_t, pthread_mutex_unlock, pthread_mutexattr_init,
     pthread_mutexattr_setpshared, pthread_mutexattr_t,
 };
+
+use crate::Shm;
 
 macro_rules! check_err {
     ($call:expr) => {
@@ -104,20 +109,71 @@ impl BinarySemaphore {
     }
 
     pub fn post(&mut self) -> Result<()> {
-        self.inner.store(0, Ordering::Release);
+        self.inner.store(1, Ordering::Release);
         Ok(())
     }
 
     pub fn wait(&mut self) -> Result<()> {
         if let Ok(_) = self
             .inner
-            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Acquire)
+            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
         {
             return Ok(());
         }
         while let Err(_) = self
             .inner
-            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
+            .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+        {
+            std::hint::spin_loop();
+        }
+        Ok(())
+    }
+}
+
+static PID: LazyLock<u32> = LazyLock::new(|| std::process::id());
+
+#[repr(transparent)]
+pub struct Spinlock {
+    inner: AtomicU32,
+}
+
+impl Spinlock {
+    pub fn new() -> Self {
+        let inner = AtomicU32::new(0);
+        Spinlock { inner }
+    }
+
+    pub fn from_shm(mem: &mut Shm) -> &mut Self {
+        unsafe {
+            let ptr = mem.as_mut_ptr() as *mut Spinlock;
+            ptr.write(Spinlock::new());
+            &mut *ptr
+        }
+    }
+
+    pub fn unlock(&mut self) -> Result<()> {
+        match self
+            .inner
+            .compare_exchange(*PID, 0, Ordering::Release, Ordering::Relaxed)
+        {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::new(
+                ErrorKind::InvalidInput,
+                "process must own the Spinlock to unlock it",
+            )),
+        }
+    }
+
+    pub fn lock(&mut self) -> Result<()> {
+        if let Ok(_) = self
+            .inner
+            .compare_exchange(0, *PID, Ordering::Acquire, Ordering::Relaxed)
+        {
+            return Ok(());
+        }
+        while let Err(_) =
+            self.inner
+                .compare_exchange(0, *PID, Ordering::Acquire, Ordering::Relaxed)
         {
             std::hint::spin_loop();
         }

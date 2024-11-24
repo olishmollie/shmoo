@@ -1,6 +1,6 @@
 use std::io::Result;
 
-use shmoo::{sync::BinarySemaphore, Mmap};
+use shmoo::{sync::BinarySemaphore, Shm};
 
 pub const BUF_SIZE: usize = 1024;
 
@@ -12,7 +12,7 @@ pub struct Shmbuf<const N: usize> {
 }
 
 impl<const N: usize> Shmbuf<N> {
-    pub fn new(mem: &mut Mmap) -> Result<&mut Self> {
+    pub fn new(mem: &mut Shm) -> Result<&mut Self> {
         assert!(
             mem.len() >= size_of::<Self>(),
             "size of shared memory segment cannot be smaller than Shmbuf"
@@ -26,7 +26,7 @@ impl<const N: usize> Shmbuf<N> {
         }
     }
 
-    pub fn from_shm_mut(mem: &mut Mmap) -> Result<&mut Self> {
+    pub fn from_shm_mut(mem: &mut Shm) -> Result<&mut Self> {
         let shmbuf = mem.as_mut_ptr() as *mut Shmbuf<N>;
         unsafe { Ok(&mut *shmbuf) }
     }

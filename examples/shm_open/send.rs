@@ -4,7 +4,7 @@ pub mod shmbuf;
 use std::io::{Error, ErrorKind, Result};
 
 use shmbuf::{Shmbuf, BUF_SIZE};
-use shmoo::Mmap;
+use shmoo::Shm;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         ));
     }
 
-    let mut mem = Mmap::options().read(true).write(true).open(shmpath)?;
+    let mut mem = Shm::options().read(true).write(true).open(shmpath)?;
 
     let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut mem)?;
 

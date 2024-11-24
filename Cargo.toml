@@ -26,7 +26,20 @@ path = "examples/ping_pong/pong.rs"
 name = "ping"
 path = "examples/ping_pong/ping.rs"
 
+[[example]]
+name = "queue"
+path = "examples/queue/pong.rs"
+
+# Don't run directly, it's invoked by queue.
+[[example]]
+name = "queue_ping"
+path = "examples/queue/ping.rs"
+
 [[bench]]
 name = "ping_pong"
+harness = false
+
+[[bench]]
+name = "queue"
 harness = false
 
