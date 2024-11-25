@@ -18,7 +18,7 @@ fn bench(c: &mut Criterion) {
         .write(true)
         .create(true)
         .mode(0o644)
-        .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())
+        .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())
         .unwrap();
 
     let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();

@@ -1,6 +1,6 @@
 use std::io::Result;
 
-use shmoo::{sync::BinarySemaphore, Shm};
+use shmoo::{sync::BinarySemaphore, FromShm, Shm, ToShm};
 
 pub const BUF_SIZE: usize = 1024;
 
@@ -12,25 +12,6 @@ pub struct Shmbuf<const N: usize> {
 }
 
 impl<const N: usize> Shmbuf<N> {
-    pub fn new(mem: &mut Shm) -> Result<&mut Self> {
-        assert!(
-            mem.len() >= size_of::<Self>(),
-            "size of shared memory segment cannot be smaller than Shmbuf"
-        );
-        let shmbuf = mem.as_mut_ptr() as *mut Shmbuf<N>;
-        unsafe {
-            (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
-            (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
-            (&raw mut (*shmbuf).buf).write([0; N]);
-            Ok(&mut *shmbuf)
-        }
-    }
-
-    pub fn from_shm_mut(mem: &mut Shm) -> Result<&mut Self> {
-        let shmbuf = mem.as_mut_ptr() as *mut Shmbuf<N>;
-        unsafe { Ok(&mut *shmbuf) }
-    }
-
     pub fn read(&self, buf: &mut [u8]) {
         assert!(buf.len() <= N);
         buf.copy_from_slice(&self.buf[..buf.len()]);
@@ -42,8 +23,42 @@ impl<const N: usize> Shmbuf<N> {
     }
 }
 
-impl<const N: usize> Drop for Shmbuf<N> {
-    fn drop(&mut self) {
-        println!("Dropping Shmbuf!");
+unsafe impl<const N: usize> ToShm for Shmbuf<N> {
+    fn to_shm(shm: &mut Shm) -> Result<&Self> {
+        if shm.len() < size_of::<Self>() {
+            todo!()
+        }
+        let shmbuf = shm.as_mut_ptr() as *mut Self;
+        unsafe {
+            (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
+            (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
+            (&raw mut (*shmbuf).buf).write([0; N]);
+            Ok(&*shmbuf)
+        }
+    }
+
+    fn to_shm_mut(shm: &mut Shm) -> Result<&mut Self> {
+        if shm.len() < size_of::<Self>() {
+            todo!()
+        }
+        let shmbuf = shm.as_mut_ptr() as *mut Self;
+        unsafe {
+            (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
+            (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
+            (&raw mut (*shmbuf).buf).write([0; N]);
+            Ok(&mut *shmbuf)
+        }
+    }
+}
+
+unsafe impl<const N: usize> FromShm for Shmbuf<N> {
+    fn from_shm(shm: &mut Shm) -> Result<&Self> {
+        let ptr = shm.as_mut_ptr() as *const Shmbuf<N>;
+        unsafe { Ok(&*ptr) }
+    }
+
+    fn from_shm_mut(shm: &mut Shm) -> Result<&mut Self> {
+        let ptr = shm.as_mut_ptr() as *mut Shmbuf<N>;
+        unsafe { Ok(&mut *ptr) }
     }
 }

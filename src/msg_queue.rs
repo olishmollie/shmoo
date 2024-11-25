@@ -19,7 +19,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
             .write(true)
             .create(true)
             .exclusive(true)
-            .with_capacity(&name, size)?;
+            .new(&name, size)?;
         let mem = MemWrapper::new(mmap, cap)?;
         Ok(MsgQueue { mem })
     }

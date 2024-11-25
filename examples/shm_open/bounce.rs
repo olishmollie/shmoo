@@ -11,13 +11,13 @@ fn main() -> Result<()> {
 
     let shmpath = &args[1];
 
-    let mut mem = Shm::options()
+    let mut shm = Shm::options()
         .read(true)
         .write(true)
         .create(true)
-        .with_capacity(shmpath, 4096)?;
+        .new(shmpath, 4096)?;
 
-    let shmbuf = Shmbuf::<BUF_SIZE>::new(&mut mem)?;
+    let shmbuf = shm.construct_mut::<Shmbuf<BUF_SIZE>>()?;
 
     // Wait for sem1 to post before touching shared memory.
     shmbuf.sem1.wait()?;

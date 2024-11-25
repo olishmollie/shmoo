@@ -14,13 +14,13 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let n = args[1].parse::<u32>().unwrap();
 
-    let mut mem = Shm::options()
+    let mut shm = Shm::options()
         .read(true)
         .write(true)
         .create(true)
-        .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
+        .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
-    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
+    let shmbuf = shm.construct_mut::<Shmbuf<4>>()?;
     let mut buf = vec![0u8; 4];
 
     let mut ping = Command::new("target/debug/examples/ping").spawn()?;

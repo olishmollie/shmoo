@@ -2,7 +2,7 @@ use std::{
     io::{Error, ErrorKind, Result},
     mem::MaybeUninit,
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicU32, AtomicU8, Ordering},
         LazyLock,
     },
 };
@@ -99,12 +99,12 @@ impl PosixCondition {
 
 #[repr(transparent)]
 pub struct BinarySemaphore {
-    pub(crate) inner: AtomicU32,
+    pub(crate) inner: AtomicU8,
 }
 
 impl BinarySemaphore {
     pub fn new() -> Self {
-        let inner = AtomicU32::new(0);
+        let inner = AtomicU8::new(0);
         BinarySemaphore { inner }
     }
 

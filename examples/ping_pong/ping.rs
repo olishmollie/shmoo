@@ -2,7 +2,7 @@
 pub mod shmbuf;
 
 use shmbuf::Shmbuf;
-use shmoo::Shm;
+use shmoo::{FromShm, Shm};
 
 const PING: &[u8] = b"ping";
 const PONG: &[u8] = b"pong";
