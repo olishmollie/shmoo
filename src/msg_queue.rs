@@ -1,11 +1,14 @@
-use std::{io::Result, marker::PhantomData};
+use std::{
+    io::{Error, ErrorKind, Result},
+    ptr::NonNull,
+};
 
 use crate::{sync::Spinlock, FromShm, Shm, ToShm};
 
 #[repr(C)]
 pub struct MsgQueue<T: Sized + Copy> {
     shm: Shm,
-    _marker: PhantomData<T>,
+    data: NonNull<T>,
 }
 
 impl<T: Sized + Copy> MsgQueue<T> {
@@ -13,26 +16,30 @@ impl<T: Sized + Copy> MsgQueue<T> {
         if size_of::<T>() == 0 {
             unimplemented!("ZSTs not yet supported");
         }
+        if cap == 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "capacity must be greater than zero",
+            ));
+        }
         let size = size_of::<Header>() + cap * size_of::<T>();
         let mut shm = Shm::new(name, size)?;
         let hdr = Header::to_shm_mut(&mut shm);
         hdr.cap = cap;
-        Ok(MsgQueue {
-            shm,
-            _marker: PhantomData,
-        })
+        let data = NonNull::new(shm[size_of::<Header>()..size].as_mut_ptr() as *mut T).unwrap();
+        Ok(MsgQueue { shm, data })
     }
 
     pub fn open(name: &str) -> Result<Self> {
-        let shm = Shm::options()
+        let mut shm = Shm::options()
             .mode(0o644)
             .read(true)
             .write(true)
             .open(name)?;
-        Ok(MsgQueue {
-            shm,
-            _marker: PhantomData,
-        })
+        let hdr = Header::from_shm(&shm);
+        let size = size_of::<Header>() + hdr.cap * size_of::<T>();
+        let data = NonNull::new(shm[size_of::<Header>()..size].as_mut_ptr() as *mut T).unwrap();
+        Ok(MsgQueue { shm, data })
     }
 
     pub fn capacity(&self) -> usize {
@@ -45,53 +52,75 @@ impl<T: Sized + Copy> MsgQueue<T> {
         hdr.len
     }
 
-    pub fn send(&mut self, val: T) -> Result<()> {
-        let hdr = self.header_mut();
-        unsafe {
-            (*hdr).wr_lock.lock()?;
-            while (*hdr).len == (*hdr).cap {
-                std::hint::spin_loop();
-            }
-            let wrp = (*hdr).wrp;
-            let ptr = self.shm.as_mut_ptr().add(size_of::<Header>()) as *mut T;
-            ptr.add((*hdr).len).write(val);
-            (*hdr).len += 1;
-            (*hdr).wrp = (wrp + 1) % self.capacity();
-            (*hdr).wr_lock.unlock()?;
-            Ok(())
+    pub fn try_send(&mut self, val: T) -> Result<()> {
+        let hdr = Header::from_shm_mut(&mut self.shm);
+        // TODO: Use Rust's standard library mutex, if possible.
+        hdr.wr_lock.lock()?;
+        if hdr.len == hdr.cap {
+            hdr.wr_lock.unlock()?;
+            // TODO: Create custom error types.
+            return Err(Error::new(ErrorKind::Other, "queue is full"));
         }
+        let wrp = hdr.wrp;
+        unsafe {
+            self.data.as_ptr().add(wrp).write(val);
+        }
+        hdr.wrp = (hdr.wrp + 1) % hdr.cap;
+        hdr.len += 1;
+        hdr.wr_lock.unlock()?;
+        Ok(())
+    }
+
+    pub fn send(&mut self, val: T) -> Result<()> {
+        loop {
+            match self.try_send(val) {
+                Err(e) if e.kind() == ErrorKind::Other => (),
+                _ => break,
+            }
+        }
+        Ok(())
+    }
+
+    pub fn try_recv(&mut self) -> Result<T> {
+        let hdr = Header::from_shm_mut(&mut self.shm);
+        // TODO: Use Rust's standard library mutex, if possible.
+        hdr.rd_lock.lock()?;
+        if hdr.len == 0 {
+            hdr.rd_lock.unlock()?;
+            // TODO: Create custom error types.
+            return Err(Error::new(ErrorKind::Other, "queue is empty"));
+        }
+        let rdp = hdr.rdp;
+        let val = unsafe { self.data.as_ptr().add(rdp).read() };
+        hdr.rdp = (hdr.rdp + 1) % hdr.cap;
+        hdr.len -= 1;
+        hdr.rd_lock.unlock()?;
+        Ok(val)
     }
 
     pub fn recv(&mut self) -> Result<T> {
-        let hdr = self.header_mut();
-        unsafe {
-            (*hdr).rd_lock.lock()?;
-            while (*hdr).len == 0 {
-                std::hint::spin_loop();
+        let val = loop {
+            match self.try_recv() {
+                Err(e) if e.kind() == ErrorKind::Other => (),
+                Err(e) => return Err(e),
+                Ok(val) => break val,
             }
-            let rdp = (*hdr).rdp;
-            let ptr = self.shm.as_ptr().add(size_of::<Header>()) as *const T;
-            let val = ptr.add((*hdr).len - 1).read();
-            (*hdr).rdp = (rdp + 1) % self.capacity();
-            (*hdr).len -= 1;
-            (*hdr).rd_lock.unlock()?;
-            Ok(val)
-        }
+        };
+        Ok(val)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        let hdr = Header::from_shm(&self.shm);
+        hdr.len == 0
     }
 
     pub fn is_full(&self) -> bool {
-        self.len() == self.capacity()
-    }
-
-    fn header_mut(&mut self) -> *mut Header {
-        self.shm[..size_of::<Header>()].as_mut_ptr() as *mut Header
+        let hdr = Header::from_shm(&self.shm);
+        hdr.len == hdr.cap
     }
 }
 
+#[derive(ToShm)]
 #[repr(C)]
 struct Header {
     cap: usize,
@@ -102,30 +131,15 @@ struct Header {
     wr_lock: Spinlock,
 }
 
-unsafe impl ToShm for Header {
-    fn to_shm(shm: &mut Shm) -> &Self {
-        unsafe {
-            let hdr = &mut *(shm[..size_of::<Header>()].as_mut_ptr() as *mut Header);
-            hdr.cap = 0;
-            hdr.len = 0;
-            hdr.rdp = 0;
-            hdr.wrp = 0;
-            hdr.rd_lock = Spinlock::new();
-            hdr.wr_lock = Spinlock::new();
-            hdr
-        }
-    }
-
-    fn to_shm_mut(shm: &mut Shm) -> &mut Self {
-        unsafe {
-            let hdr = &mut *(shm[..size_of::<Header>()].as_mut_ptr() as *mut Header);
-            hdr.cap = 0;
-            hdr.len = 0;
-            hdr.rdp = 0;
-            hdr.wrp = 0;
-            hdr.rd_lock = Spinlock::new();
-            hdr.wr_lock = Spinlock::new();
-            hdr
+impl Default for Header {
+    fn default() -> Self {
+        Self {
+            cap: 0,
+            len: 0,
+            rdp: 0,
+            wrp: 0,
+            rd_lock: Spinlock::new(),
+            wr_lock: Spinlock::new(),
         }
     }
 }

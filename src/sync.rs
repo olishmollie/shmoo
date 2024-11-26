@@ -99,7 +99,7 @@ impl PosixCondition {
 
 #[repr(transparent)]
 pub struct BinarySemaphore {
-    pub(crate) inner: AtomicU8,
+    inner: AtomicU8,
 }
 
 impl BinarySemaphore {
@@ -114,15 +114,17 @@ impl BinarySemaphore {
     }
 
     pub fn wait(&mut self) -> Result<()> {
-        if let Ok(_) = self
+        if self
             .inner
             .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
         {
             return Ok(());
         }
-        while let Err(_) = self
+        while self
             .inner
             .compare_exchange(1, 0, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
         {
             std::hint::spin_loop();
         }
@@ -130,7 +132,13 @@ impl BinarySemaphore {
     }
 }
 
-static PID: LazyLock<u32> = LazyLock::new(|| std::process::id());
+impl Default for BinarySemaphore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static PID: LazyLock<u32> = LazyLock::new(std::process::id);
 
 #[repr(transparent)]
 pub struct Spinlock {
@@ -165,18 +173,26 @@ impl Spinlock {
     }
 
     pub fn lock(&mut self) -> Result<()> {
-        if let Ok(_) = self
+        if self
             .inner
             .compare_exchange(0, *PID, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
         {
             return Ok(());
         }
-        while let Err(_) =
-            self.inner
-                .compare_exchange(0, *PID, Ordering::Acquire, Ordering::Relaxed)
+        while self
+            .inner
+            .compare_exchange(0, *PID, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
         {
             std::hint::spin_loop();
         }
         Ok(())
+    }
+}
+
+impl Default for Spinlock {
+    fn default() -> Self {
+        Self::new()
     }
 }

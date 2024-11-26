@@ -18,13 +18,13 @@ fn bench(c: &mut Criterion) {
         .write(true)
         .create(true)
         .mode(0o644)
-        .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())
+        .map("/shmoo", std::mem::size_of::<Shmbuf<4>>())
         .unwrap();
 
     let shmbuf = shm.construct_mut::<Shmbuf<4>>();
     let mut buf = vec![0u8; 4];
 
-    let mut ping = Command::new("target/release/examples/ping")
+    let mut peer = Command::new("target/release/examples/ping")
         .spawn()
         .unwrap();
 
@@ -50,7 +50,7 @@ fn bench(c: &mut Criterion) {
     shmbuf.sem1.wait().unwrap();
     shmbuf.write(DONE);
     shmbuf.sem2.post().unwrap();
-    ping.wait().unwrap();
+    peer.wait().unwrap();
 }
 
 criterion_group!(benches, bench);

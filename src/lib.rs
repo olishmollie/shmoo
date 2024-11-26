@@ -4,13 +4,16 @@ mod shm;
 pub mod sync;
 pub use msg_queue::MsgQueue;
 pub use shm::Shm;
+pub use shm_derive::ToShm;
+
+// Allows macro expansion to include `shmoo::ToShm` without a compile error.
+extern crate self as shmoo;
 
 /// # Safety
 /// [`Shm`] objects use the Posix function `shm_open` to initialize a shared memory
 /// segment, which guarantees the memory (and thus all bytes, including padding,
 /// constructed from it) is zero initialized. In addition, the Shm object's [`Deref`]
-/// implementation ensures that the pointer is properly aligned
-/// (TODO: I think this is the case, need to make sure).
+/// implementation ensures that the pointer is properly aligned (TODO: make sure this is the case).
 pub unsafe trait FromShm {
     fn from_shm(shm: &Shm) -> &Self;
     fn from_shm_mut(shm: &mut Shm) -> &mut Self;
@@ -34,6 +37,9 @@ unsafe impl<T: Sized> FromShm for T {
     }
 }
 
+/// # Safety
+/// TODO: Implementers must guarantee provenance, size, and alignment are correct. Can
+/// Shm help with that?
 pub unsafe trait ToShm: Sized {
     fn to_shm(shm: &mut Shm) -> &Self;
     fn to_shm_mut(shm: &mut Shm) -> &mut Self;

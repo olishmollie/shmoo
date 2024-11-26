@@ -18,12 +18,17 @@ fn main() -> Result<()> {
         .read(true)
         .write(true)
         .create(true)
-        .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
+        .map("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
     let shmbuf = shm.construct_mut::<Shmbuf<4>>();
     let mut buf = vec![0u8; 4];
 
-    let mut ping = Command::new("target/debug/examples/ping").spawn()?;
+    #[cfg(debug_assertions)]
+    let target = "target/debug/examples/ping";
+    #[cfg(not(debug_assertions))]
+    let target = "target/release/examples/ping";
+
+    let mut peer = Command::new(target).spawn()?;
 
     for _ in 0..n {
         // Wait for ping to post.
@@ -31,7 +36,7 @@ fn main() -> Result<()> {
 
         // Check for ping.
         shmbuf.read(&mut buf);
-        debug_assert_eq!(buf, PING);
+        assert_eq!(buf, PING);
 
         // Send a pong.
         shmbuf.write(PONG);
@@ -42,7 +47,7 @@ fn main() -> Result<()> {
     shmbuf.write(DONE);
     shmbuf.sem2.post()?;
 
-    ping.wait()?;
+    peer.wait()?;
 
     Ok(())
 }

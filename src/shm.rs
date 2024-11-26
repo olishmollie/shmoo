@@ -17,7 +17,6 @@ use nix::{
     sys::stat::{fstat, Mode},
 };
 
-use crate::sync::PosixMutex;
 use crate::ToShm;
 
 pub struct OpenOptions {
@@ -34,14 +33,14 @@ impl OpenOptions {
         let fd = shm_open(name.as_str(), self.oflg, self.mode)?;
         let statbuf = fstat(fd.as_raw_fd())?;
         let len = statbuf.st_size as usize;
-        Self::map(fd, name, len, self.prot, self.flgs, self.offset)
+        Self::map_raw(fd, name, len, self.prot, self.flgs, self.offset)
     }
 
-    pub fn new(self, name: &str, len: usize) -> Result<Shm> {
+    pub fn map(self, name: &str, len: usize) -> Result<Shm> {
         let name = Self::prepend_slash(name);
-        let fd = shm_open(name.as_str().into(), self.oflg, self.mode)?;
+        let fd = shm_open(name.as_str(), self.oflg, self.mode)?;
         ftruncate(&fd, len as i64)?;
-        Self::map(fd, name, len, self.prot, self.flgs, self.offset)
+        Self::map_raw(fd, name, len, self.prot, self.flgs, self.offset)
     }
 
     pub fn mode(mut self, mode: u32) -> Self {
@@ -100,7 +99,7 @@ impl OpenOptions {
         self
     }
 
-    fn map(
+    fn map_raw(
         fd: OwnedFd,
         name: String,
         len: usize,
@@ -125,7 +124,7 @@ impl OpenOptions {
             len,
             name: name.into(),
         };
-        Header::embed(&mut shm)?;
+        Header::init(&mut shm, len)?;
         Ok(shm)
     }
 
@@ -163,7 +162,7 @@ impl Shm {
             .write(true)
             .create(true)
             .exclusive(true)
-            .new(name, size)
+            .map(name, size)
     }
 
     pub fn open(name: &str) -> Result<Self> {
@@ -171,27 +170,21 @@ impl Shm {
     }
 
     pub fn construct<T: ToShm>(&mut self) -> &T {
-        unsafe {
-            let hdr_bytes =
-                slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>());
-
-            let hdr = &mut *(hdr_bytes.as_mut_ptr() as *mut Header);
-            let result = T::to_shm(self);
-            hdr.nxt += size_of::<T>();
-            result
-        }
+        let hdr_bytes =
+            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
+        let hdr = Header::from_bytes_mut(hdr_bytes);
+        let result = T::to_shm_mut(self);
+        hdr.nxt += size_of::<T>();
+        result
     }
 
     pub fn construct_mut<T: ToShm>(&mut self) -> &mut T {
-        unsafe {
-            let hdr_bytes =
-                slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>());
-
-            let hdr = &mut *(hdr_bytes.as_mut_ptr() as *mut Header);
-            let result = T::to_shm_mut(self);
-            hdr.nxt += size_of::<T>();
-            result
-        }
+        let hdr_bytes =
+            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
+        let hdr = Header::from_bytes_mut(hdr_bytes);
+        let result = T::to_shm_mut(self);
+        hdr.nxt += size_of::<T>();
+        result
     }
 
     pub fn options() -> OpenOptions {
@@ -247,7 +240,7 @@ impl Drop for Shm {
         }
         // Ignore ENOENT in case another process already closed the file.
         match shm_unlink(&self.name) {
-            Err(err) if err == Errno::ENOENT => (),
+            Err(Errno::ENOENT) => (),
             r => r.unwrap(),
         }
     }
@@ -255,16 +248,14 @@ impl Drop for Shm {
 
 #[repr(C)]
 struct Header {
-    mtx: PosixMutex,
     len: usize,
     nxt: usize,
 }
 
 impl Header {
-    fn embed(shm: &mut Shm) -> Result<()> {
+    fn init(shm: &mut Shm, len: usize) -> Result<()> {
         let hdr = Header::from_shm_mut(shm);
-        hdr.mtx = PosixMutex::new()?;
-        hdr.len = shm.len();
+        hdr.len = len;
         hdr.nxt = size_of::<Self>();
         Ok(())
     }
@@ -272,38 +263,19 @@ impl Header {
     fn from_shm(shm: &Shm) -> &Self {
         unsafe {
             let hdr_bytes = slice::from_raw_parts(shm.ptr.as_ptr() as *const u8, size_of::<Self>());
-
             &*(hdr_bytes.as_ptr() as *const Header)
         }
     }
 
-    fn from_shm_mut(shm: &Shm) -> &mut Self {
+    fn from_shm_mut(shm: &mut Shm) -> &mut Self {
         unsafe {
             let hdr_bytes =
                 slice::from_raw_parts_mut(shm.ptr.as_ptr() as *mut u8, size_of::<Self>());
-
             &mut *(hdr_bytes.as_mut_ptr() as *mut Header)
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_header_embed() {
-        let shm = Shm::new("shmoo", 100).unwrap();
-        unsafe {
-            let ptr = shm.ptr.as_ptr() as *const PosixMutex;
-            let len_ptr = ptr.add(1) as *const usize;
-            assert_eq!(len_ptr.read(), 100);
-            assert_eq!(len_ptr.add(1).read(), size_of::<Header>());
-        }
-    }
-
-    #[test]
-    fn test_construct_updates_header() {
-        todo!()
+    fn from_bytes_mut(data: &mut [u8]) -> &mut Self {
+        unsafe { &mut *(data[..size_of::<Self>()].as_ptr() as *mut Header) }
     }
 }

@@ -15,7 +15,7 @@ fn main() -> Result<()> {
         .read(true)
         .write(true)
         .create(true)
-        .new(shmpath, 4096)?;
+        .map(shmpath, 4096)?;
 
     let shmbuf = shm.construct_mut::<Shmbuf<BUF_SIZE>>();
 

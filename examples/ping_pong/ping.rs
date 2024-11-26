@@ -27,6 +27,6 @@ fn main() {
         if buf == DONE {
             break;
         }
-        debug_assert_eq!(buf, PONG);
+        assert_eq!(buf, PONG);
     }
 }

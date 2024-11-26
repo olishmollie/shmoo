@@ -16,9 +16,12 @@ fn main() -> Result<()> {
     let mut tx = MsgQueue::<Msg>::new("/pong", 1)?;
     let mut rx = MsgQueue::<Msg>::new("/ping", 1)?;
 
-    let mut peer = Command::new("target/debug/examples/queue_ping")
-        .spawn()
-        .unwrap();
+    #[cfg(debug_assertions)]
+    let target = "target/debug/examples/queue_ping";
+    #[cfg(not(debug_assertions))]
+    let target = "target/release/examples/queue_ping";
+
+    let mut peer = Command::new(target).spawn().unwrap();
 
     for _ in 0..n {
         let msg = rx.recv()?;
