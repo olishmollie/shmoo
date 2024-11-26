@@ -224,8 +224,8 @@ impl Deref for Shm {
     fn deref(&self) -> &Self::Target {
         unsafe {
             let hdr = Header::from_shm(self);
-            let ptr = self.ptr.as_ptr().add(hdr.nxt);
-            slice::from_raw_parts(ptr as *const u8, self.len)
+            let ptr = (self.ptr.as_ptr() as *const u8).add(hdr.nxt);
+            slice::from_raw_parts(ptr, self.len)
         }
     }
 }
@@ -234,8 +234,8 @@ impl DerefMut for Shm {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
             let hdr = Header::from_shm(self);
-            let ptr = self.ptr.as_ptr().add(hdr.nxt);
-            slice::from_raw_parts_mut(ptr as *mut u8, self.len)
+            let ptr = (self.ptr.as_ptr() as *mut u8).add(hdr.nxt);
+            slice::from_raw_parts_mut(ptr, self.len)
         }
     }
 }

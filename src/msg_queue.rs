@@ -15,7 +15,8 @@ impl<T: Sized + Copy> MsgQueue<T> {
         }
         let size = size_of::<Header>() + cap * size_of::<T>();
         let mut shm = Shm::new(name, size)?;
-        Header::to_shm(&mut shm);
+        let hdr = Header::to_shm_mut(&mut shm);
+        hdr.cap = cap;
         Ok(MsgQueue {
             shm,
             _marker: PhantomData,
@@ -45,32 +46,37 @@ impl<T: Sized + Copy> MsgQueue<T> {
     }
 
     pub fn send(&mut self, val: T) -> Result<()> {
-        let hdr = Header::from_shm_mut(&mut self.shm);
-        hdr.wr_lock.lock()?;
-        while self.is_full() {
-            std::hint::spin_loop();
+        let hdr = self.header_mut();
+        unsafe {
+            (*hdr).wr_lock.lock()?;
+            while (*hdr).len == (*hdr).cap {
+                std::hint::spin_loop();
+            }
+            let wrp = (*hdr).wrp;
+            let ptr = self.shm.as_mut_ptr().add(size_of::<Header>()) as *mut T;
+            ptr.add((*hdr).len).write(val);
+            (*hdr).len += 1;
+            (*hdr).wrp = (wrp + 1) % self.capacity();
+            (*hdr).wr_lock.unlock()?;
+            Ok(())
         }
-        let wrp = hdr.wrp;
-        self.mem.data_mut()[wrp] = val;
-        self.mem.inc_wrp();
-        self.mem.inc_len();
-        self.mem.wr_lock().unlock()?;
-        Ok(())
     }
 
     pub fn recv(&mut self) -> Result<T> {
-        let hdr = Header::from_shm_mut(&mut self.shm);
-        hdr.rd_lock.lock()?;
-        while self.is_empty() {
-            std::hint::spin_loop();
+        let hdr = self.header_mut();
+        unsafe {
+            (*hdr).rd_lock.lock()?;
+            while (*hdr).len == 0 {
+                std::hint::spin_loop();
+            }
+            let rdp = (*hdr).rdp;
+            let ptr = self.shm.as_ptr().add(size_of::<Header>()) as *const T;
+            let val = ptr.add((*hdr).len - 1).read();
+            (*hdr).rdp = (rdp + 1) % self.capacity();
+            (*hdr).len -= 1;
+            (*hdr).rd_lock.unlock()?;
+            Ok(val)
         }
-        let rdp = hdr.rdp;
-        let data = self.mem.data();
-        let val = data[rdp];
-        self.mem.inc_rdp();
-        self.mem.dec_len();
-        self.mem.rd_lock().unlock()?;
-        Ok(val)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -79,6 +85,10 @@ impl<T: Sized + Copy> MsgQueue<T> {
 
     pub fn is_full(&self) -> bool {
         self.len() == self.capacity()
+    }
+
+    fn header_mut(&mut self) -> *mut Header {
+        self.shm[..size_of::<Header>()].as_mut_ptr() as *mut Header
     }
 }
 

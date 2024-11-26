@@ -5,7 +5,7 @@ RUN apt-get update
 RUN apt-get install -y \
     build-essential \
     git curl wget npm \
-    unzip
+    unzip valgrind
 
 RUN apt-get upgrade -y
 
