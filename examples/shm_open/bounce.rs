@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         .create(true)
         .new(shmpath, 4096)?;
 
-    let shmbuf = shm.construct_mut::<Shmbuf<BUF_SIZE>>()?;
+    let shmbuf = shm.construct_mut::<Shmbuf<BUF_SIZE>>();
 
     // Wait for sem1 to post before touching shared memory.
     shmbuf.sem1.wait()?;

@@ -13,7 +13,7 @@ const DONE: &[u8] = b"done";
 
 fn bench(c: &mut Criterion) {
     let n = 1000;
-    let mut mem = Shm::options()
+    let mut shm = Shm::options()
         .read(true)
         .write(true)
         .create(true)
@@ -21,7 +21,7 @@ fn bench(c: &mut Criterion) {
         .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())
         .unwrap();
 
-    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
+    let shmbuf = shm.construct_mut::<Shmbuf<4>>();
     let mut buf = vec![0u8; 4];
 
     let mut ping = Command::new("target/release/examples/ping")

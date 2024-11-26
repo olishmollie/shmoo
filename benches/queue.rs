@@ -15,7 +15,7 @@ fn bench(c: &mut Criterion) {
     let mut tx = MsgQueue::<Msg>::new("/pong", 1).unwrap();
     let mut rx = MsgQueue::<Msg>::new("/ping", 1).unwrap();
 
-    let mut peer = Command::new("target/debug/examples/queue_ping")
+    let mut peer = Command::new("target/release/examples/queue_ping")
         .spawn()
         .unwrap();
 

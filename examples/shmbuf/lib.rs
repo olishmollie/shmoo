@@ -1,6 +1,4 @@
-use std::io::Result;
-
-use shmoo::{sync::BinarySemaphore, FromShm, Shm, ToShm};
+use shmoo::{sync::BinarySemaphore, Shm, ToShm};
 
 pub const BUF_SIZE: usize = 1024;
 
@@ -24,7 +22,7 @@ impl<const N: usize> Shmbuf<N> {
 }
 
 unsafe impl<const N: usize> ToShm for Shmbuf<N> {
-    fn to_shm(shm: &mut Shm) -> Result<&Self> {
+    fn to_shm(shm: &mut Shm) -> &Self {
         if shm.len() < size_of::<Self>() {
             todo!()
         }
@@ -33,11 +31,11 @@ unsafe impl<const N: usize> ToShm for Shmbuf<N> {
             (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
             (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
             (&raw mut (*shmbuf).buf).write([0; N]);
-            Ok(&*shmbuf)
+            &*shmbuf
         }
     }
 
-    fn to_shm_mut(shm: &mut Shm) -> Result<&mut Self> {
+    fn to_shm_mut(shm: &mut Shm) -> &mut Self {
         if shm.len() < size_of::<Self>() {
             todo!()
         }
@@ -46,19 +44,7 @@ unsafe impl<const N: usize> ToShm for Shmbuf<N> {
             (&raw mut (*shmbuf).sem1).write(BinarySemaphore::new());
             (&raw mut (*shmbuf).sem2).write(BinarySemaphore::new());
             (&raw mut (*shmbuf).buf).write([0; N]);
-            Ok(&mut *shmbuf)
+            &mut *shmbuf
         }
-    }
-}
-
-unsafe impl<const N: usize> FromShm for Shmbuf<N> {
-    fn from_shm(shm: &mut Shm) -> Result<&Self> {
-        let ptr = shm.as_mut_ptr() as *const Shmbuf<N>;
-        unsafe { Ok(&*ptr) }
-    }
-
-    fn from_shm_mut(shm: &mut Shm) -> Result<&mut Self> {
-        let ptr = shm.as_mut_ptr() as *mut Shmbuf<N>;
-        unsafe { Ok(&mut *ptr) }
     }
 }

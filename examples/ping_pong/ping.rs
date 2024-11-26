@@ -11,7 +11,7 @@ const DONE: &[u8] = b"done";
 fn main() {
     let mut mem = Shm::open("/shmoo").unwrap();
 
-    let shmbuf = Shmbuf::<4>::from_shm_mut(&mut mem).unwrap();
+    let shmbuf = Shmbuf::<4>::from_shm_mut(&mut mem);
     let mut buf = vec![0u8; 4];
 
     loop {

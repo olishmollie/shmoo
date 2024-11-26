@@ -20,7 +20,7 @@ fn main() -> Result<()> {
         .create(true)
         .new("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
-    let shmbuf = shm.construct_mut::<Shmbuf<4>>()?;
+    let shmbuf = shm.construct_mut::<Shmbuf<4>>();
     let mut buf = vec![0u8; 4];
 
     let mut ping = Command::new("target/debug/examples/ping").spawn()?;

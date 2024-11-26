@@ -1,4 +1,4 @@
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{Error, Read, Result, Write};
 use std::num::NonZero;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -20,7 +20,6 @@ use nix::{
 use crate::sync::PosixMutex;
 use crate::ToShm;
 
-/// Options to create an [`Shm`].
 pub struct OpenOptions {
     mode: Mode,
     oflg: OFlag,
@@ -109,11 +108,12 @@ impl OpenOptions {
         flgs: MapFlags,
         offset: off_t,
     ) -> Result<Shm> {
+        // Since we embed a header, the length will never be zero.
+        let actual_len = len + size_of::<Header>();
         let ptr = unsafe {
             mmap(
                 None,
-                NonZero::new(len)
-                    .ok_or(Error::new(ErrorKind::InvalidData, "len cannot be zero"))?,
+                NonZero::new(actual_len).unwrap(),
                 prot,
                 flgs,
                 &fd,
@@ -170,12 +170,28 @@ impl Shm {
         Shm::options().read(true).write(true).open(name)
     }
 
-    pub fn construct<T: ToShm>(&mut self) -> Result<&T> {
-        T::to_shm(self)
+    pub fn construct<T: ToShm>(&mut self) -> &T {
+        unsafe {
+            let hdr_bytes =
+                slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>());
+
+            let hdr = &mut *(hdr_bytes.as_mut_ptr() as *mut Header);
+            let result = T::to_shm(self);
+            hdr.nxt += size_of::<T>();
+            result
+        }
     }
 
-    pub fn construct_mut<T: ToShm>(&mut self) -> Result<&mut T> {
-        T::to_shm_mut(self)
+    pub fn construct_mut<T: ToShm>(&mut self) -> &mut T {
+        unsafe {
+            let hdr_bytes =
+                slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>());
+
+            let hdr = &mut *(hdr_bytes.as_mut_ptr() as *mut Header);
+            let result = T::to_shm_mut(self);
+            hdr.nxt += size_of::<T>();
+            result
+        }
     }
 
     pub fn options() -> OpenOptions {
@@ -277,12 +293,17 @@ mod tests {
 
     #[test]
     fn test_header_embed() {
-        let shm = Shm::new("shmoo", 4096).unwrap();
+        let shm = Shm::new("shmoo", 100).unwrap();
         unsafe {
-            let ptr = shm.as_ptr() as *const PosixMutex;
+            let ptr = shm.ptr.as_ptr() as *const PosixMutex;
             let len_ptr = ptr.add(1) as *const usize;
-            assert_eq!(len_ptr.read(), 4096);
+            assert_eq!(len_ptr.read(), 100);
             assert_eq!(len_ptr.add(1).read(), size_of::<Header>());
         }
+    }
+
+    #[test]
+    fn test_construct_updates_header() {
+        todo!()
     }
 }

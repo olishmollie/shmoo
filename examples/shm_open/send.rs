@@ -21,7 +21,7 @@ fn main() -> Result<()> {
 
     let mut shm = Shm::options().read(true).write(true).open(shmpath)?;
 
-    let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut shm)?;
+    let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut shm);
 
     shmbuf.write(string.as_bytes());
 
