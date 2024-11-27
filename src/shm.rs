@@ -171,7 +171,7 @@ impl Shm {
 
     pub fn construct<T: ShmInit>(&mut self) -> &T {
         let hdr_bytes =
-            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
+            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Header>()) };
         let hdr = Header::from_bytes_mut(hdr_bytes);
         let result = T::shm_init_mut(self);
         hdr.nxt += size_of::<T>();
@@ -180,7 +180,7 @@ impl Shm {
 
     pub fn construct_mut<T: ShmInit>(&mut self) -> &mut T {
         let hdr_bytes =
-            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
+            unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Header>()) };
         let hdr = Header::from_bytes_mut(hdr_bytes);
         let result = T::shm_init_mut(self);
         hdr.nxt += size_of::<T>();
