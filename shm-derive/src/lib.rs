@@ -5,7 +5,7 @@ use syn::{
     Generics, Result,
 };
 
-#[proc_macro_derive(ToShm)]
+#[proc_macro_derive(ShmInit)]
 pub fn derive_to_shm(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -14,7 +14,7 @@ pub fn derive_to_shm(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     let generics = add_trait_bounds(input.generics);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let err = check_repr_c(&input.attrs, &name.span());
+    let err = check_repr_c(&input.attrs, &name.span(), "ShmInit");
     if err.is_err() {
         return err.err().unwrap().into_compile_error().into();
     }
@@ -23,18 +23,97 @@ pub fn derive_to_shm(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     let to_shm_mut = to_shm_impl(&input.data, true);
 
     let expanded = quote! {
-        unsafe impl #impl_generics shmoo::ToShm for #name #ty_generics #where_clause {
-            fn to_shm(shm: &mut shmoo::Shm) -> &Self {
+        unsafe impl #impl_generics shmoo::ShmInit for #name #ty_generics #where_clause {
+            fn shm_init(shm: &mut shmoo::Shm) -> &Self {
                 #to_shm
             }
 
-            fn to_shm_mut(shm: &mut shmoo::Shm) -> &mut Self {
+            fn shm_init_mut(shm: &mut shmoo::Shm) -> &mut Self {
                 #to_shm_mut
             }
         }
     };
 
     proc_macro::TokenStream::from(expanded)
+}
+
+fn to_shm_impl(data: &Data, is_mut: bool) -> TokenStream {
+    match *data {
+        Data::Struct(ref data) => match data.fields {
+            Fields::Named(_) | Fields::Unnamed(_) | Fields::Unit => {
+                let mut_tok = if is_mut {
+                    quote! { mut }
+                } else {
+                    quote! {}
+                };
+                quote! {
+                    let ptr = shm[..size_of::<Self>()].as_mut_ptr() as *mut Self;
+                    assert!(ptr.is_aligned());
+                    unsafe {
+                        ptr.write(Self::default());
+                        &#mut_tok *ptr
+                    }
+                }
+            }
+        },
+        Data::Enum(_) => unimplemented!(),
+        Data::Union(_) => unimplemented!(),
+    }
+}
+
+#[proc_macro_derive(FromShm)]
+pub fn derive_from_shm(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let name = input.ident;
+
+    let generics = add_trait_bounds(input.generics);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    let err = check_repr_c(&input.attrs, &name.span(), "FromShm");
+    if err.is_err() {
+        return err.err().unwrap().into_compile_error().into();
+    }
+
+    let from_shm = from_shm_impl(&input.data, false);
+    let from_shm_mut = from_shm_impl(&input.data, true);
+
+    let expanded = quote! {
+        unsafe impl #impl_generics shmoo::FromShm for #name #ty_generics #where_clause {
+            fn from_shm(shm: &shmoo::Shm) -> &Self {
+                #from_shm
+            }
+
+            fn from_shm_mut(shm: &mut shmoo::Shm) -> &mut Self {
+                #from_shm_mut
+            }
+        }
+    };
+
+    proc_macro::TokenStream::from(expanded)
+}
+
+fn from_shm_impl(data: &Data, is_mut: bool) -> TokenStream {
+    match *data {
+        Data::Struct(ref data) => match data.fields {
+            Fields::Named(_) | Fields::Unnamed(_) | Fields::Unit => {
+                let (mut_tok, const_tok, method) = if is_mut {
+                    (quote! { mut }, quote! { mut }, quote! {as_mut_ptr})
+                } else {
+                    (quote! {}, quote! { const }, quote! {as_ptr})
+                };
+                quote! {
+                    let size = size_of::<Self>();
+                    assert!(shm.len() >= size);
+                    let ptr = shm[..size].#method() as *#const_tok Self;
+                    assert!(ptr.is_aligned());
+                    unsafe { &#mut_tok *ptr }
+                }
+            }
+        },
+        Data::Enum(_) => unimplemented!(),
+        Data::Union(_) => unimplemented!(),
+    }
 }
 
 fn add_trait_bounds(mut generics: Generics) -> Generics {
@@ -46,8 +125,9 @@ fn add_trait_bounds(mut generics: Generics) -> Generics {
     generics
 }
 
-fn check_repr_c(attrs: &[Attribute], span: &Span) -> Result<()> {
+fn check_repr_c(attrs: &[Attribute], span: &Span, trait_name: &str) -> Result<()> {
     let mut has_repr = false;
+    let err_msg = &format!("{}: struct must be repr(C)", trait_name);
     for attr in attrs {
         if attr.path().is_ident("repr") {
             has_repr = true;
@@ -55,7 +135,7 @@ fn check_repr_c(attrs: &[Attribute], span: &Span) -> Result<()> {
                 if meta.path.is_ident("C") {
                     Ok(())
                 } else {
-                    Err(meta.error("struct must be repr(C)"))
+                    Err(meta.error(err_msg))
                 }
             })?;
         }
@@ -63,30 +143,6 @@ fn check_repr_c(attrs: &[Attribute], span: &Span) -> Result<()> {
     if has_repr {
         Ok(())
     } else {
-        Err(Error::new(*span, "struct must be repr(C)"))
-    }
-}
-
-fn to_shm_impl(data: &Data, mut_spec: bool) -> TokenStream {
-    match *data {
-        Data::Struct(ref data) => match data.fields {
-            Fields::Named(_) | Fields::Unnamed(_) | Fields::Unit => {
-                let mut_spec = if mut_spec {
-                    quote! { mut }
-                } else {
-                    quote! {}
-                };
-                quote! {
-                    let ptr = shm[..size_of::<Self>()].as_mut_ptr() as *mut Self;
-                    assert!(ptr.is_aligned());
-                    unsafe {
-                        ptr.write(Self::default());
-                        &#mut_spec *ptr
-                    }
-                }
-            }
-        },
-        Data::Enum(_) => unimplemented!(),
-        Data::Union(_) => unimplemented!(),
+        Err(Error::new(*span, err_msg))
     }
 }

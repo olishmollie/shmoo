@@ -3,7 +3,7 @@ use std::{
     ptr::NonNull,
 };
 
-use crate::{sync::Spinlock, FromShm, Shm, ToShm};
+use crate::{sync::Spinlock, FromShm, Shm, ShmInit};
 
 #[repr(C)]
 pub struct MsgQueue<T: Sized + Copy> {
@@ -120,7 +120,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
     }
 }
 
-#[derive(ToShm)]
+#[derive(ToShm, FromShm)]
 #[repr(C)]
 struct Header {
     cap: usize,

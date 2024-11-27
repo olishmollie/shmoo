@@ -17,7 +17,7 @@ use nix::{
     sys::stat::{fstat, Mode},
 };
 
-use crate::ToShm;
+use crate::ShmInit;
 
 pub struct OpenOptions {
     mode: Mode,
@@ -169,20 +169,20 @@ impl Shm {
         Shm::options().read(true).write(true).open(name)
     }
 
-    pub fn construct<T: ToShm>(&mut self) -> &T {
+    pub fn construct<T: ShmInit>(&mut self) -> &T {
         let hdr_bytes =
             unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
         let hdr = Header::from_bytes_mut(hdr_bytes);
-        let result = T::to_shm_mut(self);
+        let result = T::shm_init_mut(self);
         hdr.nxt += size_of::<T>();
         result
     }
 
-    pub fn construct_mut<T: ToShm>(&mut self) -> &mut T {
+    pub fn construct_mut<T: ShmInit>(&mut self) -> &mut T {
         let hdr_bytes =
             unsafe { slice::from_raw_parts_mut(self.ptr.as_ptr() as *mut u8, size_of::<Self>()) };
         let hdr = Header::from_bytes_mut(hdr_bytes);
-        let result = T::to_shm_mut(self);
+        let result = T::shm_init_mut(self);
         hdr.nxt += size_of::<T>();
         result
     }
