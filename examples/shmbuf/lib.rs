@@ -3,7 +3,7 @@ use shmoo::{sync::BinarySemaphore, ShmInit};
 
 pub const BUF_SIZE: usize = 1024;
 
-#[derive(ToShm, FromShm)]
+#[derive(ShmInit, FromShm)]
 #[repr(C)]
 pub struct Shmbuf<const N: usize> {
     pub sem1: BinarySemaphore,

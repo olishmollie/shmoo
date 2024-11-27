@@ -24,7 +24,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
         }
         let size = size_of::<Header>() + cap * size_of::<T>();
         let mut shm = Shm::new(name, size)?;
-        let hdr = Header::to_shm_mut(&mut shm);
+        let hdr = Header::shm_init_mut(&mut shm);
         hdr.cap = cap;
         let data = NonNull::new(shm[size_of::<Header>()..size].as_mut_ptr() as *mut T).unwrap();
         Ok(MsgQueue { shm, data })
@@ -120,7 +120,7 @@ impl<T: Sized + Copy> MsgQueue<T> {
     }
 }
 
-#[derive(ToShm, FromShm)]
+#[derive(ShmInit, FromShm)]
 #[repr(C)]
 struct Header {
     cap: usize,
