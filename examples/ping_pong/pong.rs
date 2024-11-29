@@ -1,49 +1,52 @@
-#[path = "../shmbuf/lib.rs"]
 pub mod shmbuf;
 
-use std::{io::Result, process::Command};
+use std::{error::Error, process::Command};
 
 use shmbuf::Shmbuf;
-use shmoo::Mmap;
+use shmoo::Shm;
 
 const PING: &[u8] = b"ping";
 const PONG: &[u8] = b"pong";
 const DONE: &[u8] = b"done";
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
     let n = args[1].parse::<u32>().unwrap();
 
-    let mut mem = Mmap::options()
+    let mut shm = Shm::options()
         .read(true)
         .write(true)
-        .mode(0o644)
         .create(true)
-        .with_capacity("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
+        .map("/shmoo", std::mem::size_of::<Shmbuf<4>>())?;
 
-    let shmbuf = Shmbuf::<4>::new(&mut mem).unwrap();
+    let shmbuf = shm.construct_mut::<Shmbuf<4>>()?;
     let mut buf = vec![0u8; 4];
 
-    let mut ping = Command::new("target/debug/examples/ping").spawn()?;
+    #[cfg(debug_assertions)]
+    let target = "target/debug/examples/ping";
+    #[cfg(not(debug_assertions))]
+    let target = "target/release/examples/ping";
+
+    let mut peer = Command::new(target).spawn()?;
 
     for _ in 0..n {
         // Wait for ping to post.
-        shmbuf.sem1.wait();
+        shmbuf.sem1.wait()?;
 
         // Check for ping.
         shmbuf.read(&mut buf);
-        debug_assert_eq!(buf, PING);
+        assert_eq!(buf, PING);
 
         // Send a pong.
         shmbuf.write(PONG);
-        shmbuf.sem2.post();
+        shmbuf.sem2.post()?;
     }
 
-    shmbuf.sem1.wait();
+    shmbuf.sem1.wait()?;
     shmbuf.write(DONE);
-    shmbuf.sem2.post();
+    shmbuf.sem2.post()?;
 
-    ping.wait()?;
+    peer.wait()?;
 
     Ok(())
 }

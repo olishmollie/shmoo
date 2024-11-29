@@ -1,38 +1,34 @@
-#[path = "../shmbuf/lib.rs"]
 pub mod shmbuf;
 
-use std::io::{Error, ErrorKind, Result};
+use std::{error::Error, io};
 
 use shmbuf::{Shmbuf, BUF_SIZE};
-use shmoo::Mmap;
+use shmoo::{FromShm, Shm};
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
 
     let shmpath = &args[1];
     let string = &args[2];
 
     if string.len() > BUF_SIZE {
-        return Err(Error::new(
-            ErrorKind::InvalidData,
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::InvalidData,
             format!("string must be less than {} bytes long", BUF_SIZE),
-        ));
+        )));
     }
 
-    let mut mem = Mmap::options()
-        .read(true)
-        .write(true)
-        .with_capacity(shmpath, 4096)?;
+    let mut shm = Shm::options().read(true).write(true).open(shmpath)?;
 
-    let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut mem)?;
+    let shmbuf = Shmbuf::<BUF_SIZE>::from_shm_mut(&mut shm)?;
 
     shmbuf.write(string.as_bytes());
 
     // Tell peer that it can now access shared memory.
-    shmbuf.sem1.post();
+    shmbuf.sem1.post()?;
 
     // Wait until peer has modified shared memory.
-    shmbuf.sem2.wait();
+    shmbuf.sem2.wait()?;
 
     let result = String::from_utf8(shmbuf.buf.to_vec()).unwrap();
     println!("{}", result);
